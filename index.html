@@ -729,6 +729,7 @@
     // ============================================================
     function switchLanguage(lang) {
       currentLang = lang;
+      langSelect.value = lang;
       const t = TRANSLATIONS[lang];
 
       document.getElementById("text-main-title").innerHTML = t.mainTitle;

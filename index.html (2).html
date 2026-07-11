@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POPUP BUSTER OS</title>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+      background: #1e272e;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      overflow: hidden;
+    }
+
+    /* デスクトップを模したコンテナ */
+    #game-container {
+      width: min(450px, 100vw);
+      height: min(780px, 100vh);
+      background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
+      border-radius: 16px;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
+      position: relative;
+      overflow: hidden;
+      border: 4px solid #333;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* メインデスクトップ領域 */
+    #desktop-area {
+      flex: 1;
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    /* タスクバー（画面下部） */
+    #taskbar {
+      height: 48px;
+      background: rgba(20, 20, 30, 0.85);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 0.85rem;
+      z-index: 90;
+      user-select: none;
+    }
+
+    .taskbar-left { display: flex; align-items: center; gap: 8px; }
+    
+    /* OS風スタートボタン */
+    .os-start-btn {
+      background: linear-gradient(135deg, #0078d7, #005a9e);
+      border: none;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .taskbar-right { display: flex; align-items: center; gap: 12px; opacity: 0.8; }
+
+    /* 各種画面のオーバーレイ（デスクトップ内に表示） */
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start; /* 10件並ぶので上詰めに変更 */
+      padding: 20px;
+      text-align: center;
+      background: rgba(15, 15, 25, 0.7);
+      backdrop-filter: blur(12px);
+      z-index: 80;
+      overflow-y: auto;
+    }
+
+    .screen.active { display: flex; }
+
+    /* ===== 言語＆難易度コントロール ===== */
+    .lang-selector {
+      margin-bottom: 8px;
+    }
+    .lang-select {
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      outline: none;
+    }
+    .lang-select option { background: #222; }
+
+    /* ===== スタート画面 ===== */
+    #start-screen h1 { font-size: 1.6rem; line-height: 1.2; margin-bottom: 5px; color: #00ecff; text-shadow: 0 0 10px rgba(0,236,255,0.3); }
+    #start-screen p { font-size: 0.75rem; line-height: 1.3; opacity: 0.9; max-width: 320px; margin-bottom: 8px; }
+
+    .difficulty-group { width: 100%; max-width: 300px; margin-bottom: 12px; }
+    .difficulty-label { font-size: 0.8rem; font-weight: bold; margin-bottom: 4px; opacity: 0.9; }
+    .difficulty-buttons { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+    
+    .diff-btn {
+      flex: 1 1 calc(33% - 6px);
+      min-width: 75px;
+      padding: 6px 2px;
+      font-size: 0.75rem;
+      font-weight: bold;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      cursor: pointer;
+    }
+    .diff-btn.selected { background: #0078d7; border-color: #00a4ef; }
+    .diff-btn.expert-hidden { display: none; }
+    .diff-btn.expert {
+      flex: 1 1 100%;
+      background: linear-gradient(135deg, #ff006e, #8338ec, #3a86ff);
+      animation: expertGlow 2s infinite alternate;
+    }
+    .diff-btn.expert.selected { background: linear-gradient(135deg, #ffdd57, #ff6b6b); color: #222; }
+
+    @keyframes expertGlow {
+      from { box-shadow: 0 0 4px rgba(255, 0, 110, 0.5); }
+      to { box-shadow: 0 0 12px rgba(131, 56, 236, 0.8); }
+    }
+
+    #unlock-hint { font-size: 0.7rem; opacity: 0.75; margin-top: 4px; display: none; }
+    #unlock-hint.show { display: block; }
+
+    .btn {
+      padding: 8px 24px;
+      font-size: 0.95rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #00a4ef;
+      color: white;
+      box-shadow: 0 4px 14px rgba(0, 164, 239, 0.4);
+    }
+    .btn:disabled {
+      background: #555;
+      color: #aaa;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    /* ===== ランキング表示エリア（10件対応） ===== */
+    .ranking-container {
+      width: 100%;
+      max-width: 320px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      font-size: 0.8rem;
+    }
+    .ranking-title {
+      font-weight: bold;
+      color: #ffdd57;
+      margin-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      padding-bottom: 2px;
+    }
+    .ranking-list {
+      list-style: none;
+      text-align: left;
+    }
+    .ranking-list:empty::before {
+      content: "No Data";
+      opacity: 0.5;
+    }
+    .ranking-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+    .ranking-item:nth-child(odd) {
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .rank-num {
+      font-weight: bold;
+      width: 28px;
+      display: inline-block;
+    }
+    .rank-1 { color: #ffd700; font-size: 0.85rem; }
+    .rank-2 { color: #c0c0c0; }
+    .rank-3 { color: #cd7f32; }
+
+    /* ===== 名前入力フォーム ===== */
+    .register-box {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 10px;
+      width: 100%;
+      max-width: 320px;
+      margin-bottom: 12px;
+    }
+    .register-box p {
+      font-size: 0.75rem;
+      margin-bottom: 6px;
+    }
+    .input-grp {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+    .name-input {
+      width: 90px;
+      padding: 4px;
+      font-size: 0.95rem;
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: rgba(0, 0, 0, 0.3);
+      color: #fff;
+      border-radius: 4px;
+    }
+    .name-input:focus {
+      outline: none;
+      border-color: #00ecff;
+    }
+    .btn-sm {
+      padding: 4px 12px;
+      font-size: 0.8rem;
+    }
+
+    /* ===== プレイ中のHUD（上部パーツ） ===== */
+    #hud {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: 10px 14px;
+      background: rgba(20, 20, 30, 0.75);
+      backdrop-filter: blur(8px);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: bold;
+      z-index: 70;
+      font-size: 0.85rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    #hud-left { display: flex; gap: 12px; align-items: center; }
+    #timer { font-size: 1.1rem; color: #00ffcc; }
+    #timer.warning { color: #ff4d4d; animation: blink 0.5s infinite alternate; }
+
+    @keyframes blink { from { opacity: 1; } to { opacity: 0.3; } }
+
+    /* ===== OS風ウィンドウ（広告ポップアップ） ===== */
+    .ad-popup {
+      position: absolute;
+      width: 260px;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+      border: 1px solid #1c1c1c;
+      transform: scale(1);
+      opacity: 1;
+      transition: transform 0.2s cubic-bezier(0.1, 0.8, 0.3, 1), opacity 0.15s ease;
+    }
+
+    .ad-popup.closing {
+      transform: scale(0.85) translateY(-10px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .ad-popup.warning-ad {
+      width: min(340px, 94%);
+      border: 2px solid #ff1e1e;
+      box-shadow: 0 0 30px rgba(255, 0, 0, 0.4);
+      animation: warningShake 0.35s ease-out;
+    }
+
+    @keyframes warningShake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-4px); }
+      40%, 80% { transform: translateX(4px); }
+    }
+
+    .ad-header {
+      background: #0078d7;
+      color: #fff;
+      padding: 6px 10px;
+      font-size: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+    .warning-ad .ad-header { background: #b71c1c; }
+
+    .ad-close {
+      width: 18px;
+      height: 18px;
+      font-size: 10px;
+      line-height: 16px;
+      text-align: center;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .ad-close:hover { background: #e81123; }
+
+    .ad-body { padding: 14px; color: #333; text-align: center; }
+    .warning-ad .ad-body { background: #ffebee; color: #b71c1c; }
+
+    .ad-icon { width: 48px; height: 48px; border-radius: 8px; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; }
+    .ad-title { font-size: 0.95rem; font-weight: bold; margin-bottom: 4px; }
+    .ad-text { font-size: 0.75rem; color: #666; line-height: 1.4; margin-bottom: 10px; }
+    .warning-ad .ad-text { color: #b71c1c; font-weight: bold; }
+    
+    .ad-install-btn {
+      display: block; width: 100%; padding: 8px;
+      background: #0078d7; color: #fff; border: none; border-radius: 4px;
+      font-weight: bold; font-size: 0.8rem; pointer-events: none;
+    }
+    .warning-ad .ad-install-btn { background: #b71c1c; }
+
+    /* ===== レア✕ボタン ===== */
+    .rare-close-btn {
+      position: absolute;
+      width: 24px; height: 24px; font-size: 12px; line-height: 22px;
+      text-align: center; border-radius: 50%; cursor: pointer; z-index: 65;
+      user-select: none; animation: rarePulse 0.5s infinite alternate;
+      box-shadow: 0 0 10px currentColor; font-weight: bold;
+    }
+
+    @keyframes rarePulse { from { transform: scale(1); } to { transform: scale(1.15); } }
+    
+    .rare-close-btn.gold { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #5a3e00; border: 2px solid #fff; }
+    .rare-close-btn.silver { background: linear-gradient(135deg, #e8e8e8, #a8a8a8); color: #222; border: 2px solid #fff; }
+    .rare-close-btn.rainbow {
+      color: #fff; border: 2px solid #fff; text-shadow: 0 0 3px #000;
+      background: linear-gradient(135deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff);
+      background-size: 400% 400%; animation: rarePulse 0.4s infinite alternate, rainbowShift 1s linear infinite;
+    }
+    @keyframes rainbowShift { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
+
+    /* ===== ペナルティ画面（App Store風） ===== */
+    #fake-store-overlay {
+      display: none; position: absolute; inset: 0;
+      background: rgba(0, 0, 0, 0.6); z-index: 100;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    #fake-store-overlay.show { display: flex; }
+    .fake-store { background: #fff; border-radius: 12px; width: 100%; max-width: 290px; padding: 20px; text-align: center; color: #222; }
+    .fake-store-icon { font-size: 2.5rem; margin-bottom: 8px; }
+    .fake-store h3 { font-size: 1.1rem; margin-bottom: 6px; }
+    .fake-store p { font-size: 0.8rem; color: #666; margin-bottom: 14px; }
+    .fake-store .btn { background: #0078d7; box-shadow: none; font-size: 0.9rem; padding: 8px 20px; }
+
+    /* ===== リザルト画面 ===== */
+    #result-screen h2 { font-size: 1.4rem; color: #ff4d4d; margin-bottom: 2px; }
+    #final-score { font-size: 2.8rem; font-weight: bold; margin-bottom: 2px; color: #00ffcc; }
+    #unlock-message { display: none; font-size: 0.9rem; font-weight: bold; color: #ffdd57; animation: blink 0.6s infinite alternate; margin-bottom: 6px; }
+    #unlock-message.show { display: block; }
+    #result-message { font-size: 0.8rem; margin-bottom: 8px; }
+
+    /* レベルアップ通知 */
+    #levelup-overlay { display: none; position: absolute; inset: 0; z-index: 50; align-items: center; justify-content: center; pointer-events: none; }
+    #levelup-overlay.show { display: flex; animation: levelupBg 0.8s ease-out; }
+    @keyframes levelupBg { 0% { background: rgba(0, 236, 255, 0.2); } 100% { background: rgba(0,0,0,0); } }
+    .levelup-text { font-size: 1.8rem; font-weight: 900; color: #ffdd57; text-shadow: 2px 2px 0 #000; }
+
+    /* お手つき時の画面フラッシュ */
+    .penalty-flash { animation: flashRed 0.2s; }
+    @keyframes flashRed { 50% { background-color: rgba(255, 0, 0, 0.4); } }
+  </style>
+</head>
+<body>
+
+  <div id="game-container">
+
+    <!-- メインデスクトップ画面 -->
+    <div id="desktop-area">
+
+      <!-- HUD (プレイ中上部に常駐) -->
+      <div id="hud">
+        <div id="hud-left">
+          <div id="timer">30</div>
+          <div id="level-display">Lv.1</div>
+        </div>
+        <div id="score">SCORE: 0</div>
+      </div>
+
+      <!-- スタート画面 -->
+      <div id="start-screen" class="screen active">
+        <div class="lang-selector">
+          <select id="lang-select" class="lang-select">
+            <option value="ja">日本語</option>
+            <option value="en">English</option>
+            <option value="zh">简体中文</option>
+          </select>
+        </div>
+
+        <h1 id="text-main-title">ポップアップバスター</h1>
+        <p id="text-description">
+          偽広告の小さな「✕」だけを狙って消し去れ！<br>
+          ⚠ 本体タップで残り時間 -3秒！
+        </p>
+
+        <!-- スタート画面のランキング表示 (TOP 10) -->
+        <div class="ranking-container">
+          <div class="ranking-title" id="text-start-rank-title">🏆 TOP 10 RANKING</div>
+          <ul class="ranking-list" id="start-ranking-list">
+            <!-- 動的に追加されます -->
+          </ul>
+        </div>
+
+        <div class="difficulty-group">
+          <div id="text-diff-label" class="difficulty-label">難易度を選択</div>
+          <div class="difficulty-buttons" id="difficulty-buttons">
+            <button class="diff-btn" data-diff="easy" id="btn-easy">かんたん</button>
+            <button class="diff-btn selected" data-diff="normal" id="btn-normal">ふつう</button>
+            <button class="diff-btn" data-diff="hard" id="btn-hard">むずかしい</button>
+            <button class="diff-btn expert expert-hidden" data-diff="expert" id="expert-btn">Expert</button>
+          </div>
+          <div id="unlock-hint">💡 むずかしいで20点以上で Expert 解放！</div>
+        </div>
+
+        <button class="btn" id="start-btn">START</button>
+      </div>
+
+      <!-- レベルアップ表示用 -->
+      <div id="levelup-overlay">
+        <div class="levelup-text" id="text-levelup">LEVEL UP!</div>
+      </div>
+
+      <!-- ペナルティ表示（伪ストア） -->
+      <div id="fake-store-overlay">
+        <div class="fake-store">
+          <div class="fake-store-icon">📥</div>
+          <h3 id="text-store-title">インストールしますか？</h3>
+          <p id="text-store-desc">広告本体をタップしてしまいました！<br>ペナルティ：残り時間 -3秒</p>
+          <button class="btn" id="close-store-btn">Cancel</button>
+        </div>
+      </div>
+
+      <!-- リザルト画面 -->
+      <div id="result-screen" class="screen">
+        <h2 id="text-gameover-title">タイムアップ！</h2>
+        <p id="text-final-score-label">獲得スコア</p>
+        <div id="final-score">0</div>
+        <p id="unlock-message">🎉 Expert Mode Unlocked!</p>
+        <p id="result-message"></p>
+
+        <!-- 名前登録用のフォーム -->
+        <div class="register-box" id="register-box">
+          <p id="text-register-hint">ランキングに名前を登録（3文字まで）</p>
+          <div class="input-grp">
+            <input type="text" id="player-name" class="name-input" maxlength="3" placeholder="AAA">
+            <button class="btn btn-sm" id="save-rank-btn">OK</button>
+          </div>
+        </div>
+
+        <!-- リザルトのランキング表示 (TOP 10) -->
+        <div class="ranking-container">
+          <div class="ranking-title" id="text-result-rank-title">🏆 TOP 10 RANKING</div>
+          <ul class="ranking-list" id="result-ranking-list">
+            <!-- 動的に追加されます -->
+          </ul>
+        </div>
+
+        <button class="btn" id="retry-btn">RETRY</button>
+      </div>
+
+    </div>
+
+    <!-- システム下部のタスクバー -->
+    <div id="taskbar">
+      <div class="taskbar-left">
+        <button class="os-start-btn">❖ Start</button>
+        <span id="taskbar-status">System Ready</span>
+      </div>
+      <div class="taskbar-right">
+        <span id="taskbar-clock">12:00</span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ============================================================
+    // 多言語テキスト翻訳データ（広告データ含む）
+    // ============================================================
+    const TRANSLATIONS = {
+      ja: {
+        mainTitle: "ポップアップバスター",
+        description: "偽広告の小さな「✕」だけを狙って消し去れ！<br>⚠ 本体タップで残り時間 -3秒！",
+        diffLabel: "難易度を選択",
+        easy: "かんたん",
+        normal: "ふつう",
+        hard: "むずかしい",
+        expert: "Expert",
+        unlockHint: "💡 むずかしいで20点以上で Expert 解放！",
+        scoreLabel: "スコア: ",
+        levelLabel: "Lv.",
+        levelup: "レベルアップ！",
+        storeTitle: "インストールしますか？",
+        storeDesc: "広告本体をタップしてしまいました！<br>ペナルティ：残り時間 -3秒",
+        cancel: "キャンセル",
+        timeup: "タイムアップ！",
+        finalScore: "獲得スコア",
+        unlockMsg: "🎉 隠し難易度「Expert」解放！",
+        sysReady: "システム正常",
+        sysPlaying: "ウイルス侵入中...",
+        results: ["練習あるのみ！もう一度挑戦しよう。", "まずまずの結果です。", "なかなかの腕前！", "すごい！かなり上手です！", "神業！✕ボタンの達人です！", "伝説級！広告地獄の征服者！"],
+        warningHeader: "⚠ システム警告",
+        warningTitle: "致命的なエラー",
+        warningText: "警告！！あなたのシステムはウイルスに感染しています！",
+        browserHeader: "ブラウザ ウィンドウ",
+        rankTitle: "🏆 TOP 10 ランキング",
+        registerHint: "ランキングに名前を登録（3文字まで）",
+        ads: [
+          { title: "当選おめでとう！", text: "無料ボーナスを受け取るにはここをクリック！", btn: "今すぐGET" },
+          { title: "スマホが重い？", text: "このアプリを入れて今すぐ不要ファイルを削除！", btn: "クリーンアップ" },
+          { title: "【限定】億万長者へ", text: "たった3タップで資産が激増する秘密の方法", btn: "詳細を見る" },
+          { title: "動画を再生", text: "続きを見るにはプレイヤーをアップデートしてください", btn: "更新する" }
+        ]
+      },
+      en: {
+        mainTitle: "Pop-up Buster",
+        description: "Aim only for the tiny '✕' to close fake ads!<br>⚠ Tapping the window body costs -3 seconds!",
+        diffLabel: "Select Difficulty",
+        easy: "Easy",
+        normal: "Normal",
+        hard: "Hard",
+        expert: "Expert",
+        unlockHint: "💡 Score 20+ on Hard to unlock Expert!",
+        scoreLabel: "SCORE: ",
+        levelLabel: "Lv.",
+        levelup: "LEVEL UP!",
+        storeTitle: "Confirm Installation?",
+        storeDesc: "You tapped the ad body!<br>Penalty: -3 seconds",
+        cancel: "Cancel",
+        timeup: "TIME'S UP!",
+        finalScore: "Final Score",
+        unlockMsg: "🎉 Hidden Difficulty 'Expert' Unlocked!",
+        sysReady: "System Ready",
+        sysPlaying: "Threats Detected...",
+        results: ["Keep practicing!", "Not bad.", "Good job!", "Excellent skill!", "Unbelievable! You are a pro!", "Legendary! Conqueror of Malware!"],
+        warningHeader: "⚠ System Alert",
+        warningTitle: "CRITICAL ERROR",
+        warningText: "WARNING!! YOUR SYSTEM IS INFECTED!",
+        browserHeader: "Browser Window",
+        rankTitle: "🏆 TOP 10 RANKING",
+        registerHint: "Enter your name for ranking (Max 3 chars)",
+        ads: [
+          { title: "Lucky Visitor!", text: "Click to claim free bonus item immediately.", btn: "Claim Now" },
+          { title: "Storage Full?", text: "Install this app to clean up your device instantly.", btn: "Clean Now" },
+          { title: "Become Rich!", text: "The secret method to boost your income in 3 clicks.", btn: "Learn More" },
+          { title: "Update Required", text: "Please update your media player to continue watching.", btn: "Update" }
+        ]
+      },
+      zh: {
+        mainTitle: "弹窗克星",
+        description: "瞄准虚假广告上的小「✕」将其关闭！<br>⚠ 误触广告本体将扣除 3 秒时间！",
+        diffLabel: "选择难度",
+        easy: "简单",
+        normal: "普通",
+        hard: "困难",
+        expert: "Expert",
+        unlockHint: "💡 在困难难度下获得20分以上解锁 Expert！",
+        scoreLabel: "得分: ",
+        levelLabel: "Lv.",
+        levelup: "等级提升！",
+        storeTitle: "确认要安装吗？",
+        storeDesc: "你点击了广告本体！<br>惩罚：剩余时间 -3 秒",
+        cancel: "取消",
+        timeup: "时间到！",
+        finalScore: "最终得分",
+        unlockMsg: "🎉 隐藏难度「Expert」已解锁！",
+        sysReady: "系统就绪",
+        sysPlaying: "检测到病毒感染...",
+        results: ["再接再厉！多加练习吧。", "还可以，继续加油！", "手速不错！", "太厉害了！技术高超！", "神乎其技！你是关闭窗口的达人！", "传奇级别！广告地獄的征服者！"],
+        warningHeader: "⚠ 系统警告",
+        warningTitle: "致命错误",
+        warningText: "警告！！您的系統受到嚴重感染！",
+        browserHeader: "浏览器窗口",
+        rankTitle: "🏆 前10名 排行榜",
+        registerHint: "输入您的名字以登记排行（最多3个字符）",
+        ads: [
+          { title: "恭喜中奖！", text: "点击此处立即领取免费福利礼包！", btn: "立即领取" },
+          { title: "手机运行变慢？", text: "安装此应用即可立即清理无用缓存和垃圾！", btn: "立即清理" },
+          { title: "【限时】致富秘籍", text: "只需点击3下，就能让你的资产翻倍的秘密。", btn: "查看详情" },
+          { title: "需要更新播放器", text: "请更新您的媒体播放器以继续观看视频内容。", btn: "立即更新" }
+        ]
+      }
+    };
+
+    const GAME_DURATION = 30;
+    const PENALTY_SECONDS = 3;
+    const STORAGE_KEY_EXPERT = "adCloseGame_expertUnlocked";
+    const STORAGE_KEY_RANKING = "adCloseGame_rankingData_v10"; // 10件用にキーを更新
+
+    const DIFFICULTY_SETTINGS = {
+      easy: { initialDelay: 1400, speedUpPerLevel: 60, maxAds: 1 },
+      normal: { initialDelay: 900, speedUpPerLevel: 90, maxAds: 3 },
+      hard: { initialDelay: 550, speedUpPerLevel: 120, maxAds: 5 },
+      expert: { initialDelay: 280, speedUpPerLevel: 150, maxAds: 8 }
+    };
+
+    const RARE_CONFIG = {
+      gold:   { duration: 1000, points: 5,  spawnChance: 0.12 },
+      silver: { duration: 1500, points: 2,  spawnChance: 0.42 },
+      rainbow:{ duration: 1000, points: 10, spawnChance: 0.035 }
+    };
+
+    // DOM要素
+    const startScreen = document.getElementById("start-screen");
+    const resultScreen = document.getElementById("result-screen");
+    const startBtn = document.getElementById("start-btn");
+    const retryBtn = document.getElementById("retry-btn");
+    const timerEl = document.getElementById("timer");
+    const scoreEl = document.getElementById("score");
+    const levelDisplayEl = document.getElementById("level-display");
+    const desktopArea = document.getElementById("desktop-area");
+    const finalScoreEl = document.getElementById("final-score");
+    const resultMessageEl = document.getElementById("result-message");
+    const unlockMessageEl = document.getElementById("unlock-message");
+    const unlockHintEl = document.getElementById("unlock-hint");
+    const expertBtn = document.getElementById("expert-btn");
+    const fakeStoreOverlay = document.getElementById("fake-store-overlay");
+    const closeStoreBtn = document.getElementById("close-store-btn");
+    const levelupOverlay = document.getElementById("levelup-overlay");
+    const difficultyButtons = document.getElementById("difficulty-buttons");
+    const langSelect = document.getElementById("lang-select");
+    const taskbarClock = document.getElementById("taskbar-clock");
+    const taskbarStatus = document.getElementById("taskbar-status");
+
+    // ランキング用DOM
+    const startRankingList = document.getElementById("start-ranking-list");
+    const resultRankingList = document.getElementById("result-ranking-list");
+    const registerBox = document.getElementById("register-box");
+    const playerNameInput = document.getElementById("player-name");
+    const saveRankBtn = document.getElementById("save-rank-btn");
+
+    let score = 0;
+    let timeLeft = GAME_DURATION;
+    let timerInterval = null;
+    let adSpawnInterval = null;
+    let rareSpawnInterval = null;
+    let activeAds = [];
+    let isPaused = false;
+    let selectedDifficulty = "normal";
+    let playingDifficulty = "normal";
+    let currentLang = "ja";
+    let level = 1;
+    let adsClosed = 0;
+    let spawnDelay = 900;
+    let activeRareBtn = null;
+    let expertUnlocked = false;
+    let justUnlockedExpert = false;
+
+    const adIcons = [
+      { icon: "🎰", iconBg: "#ffeaa7" },
+      { icon: "💎", iconBg: "#dfe6e9" },
+      { icon: "🔥", iconBg: "#fab1a0" },
+      { icon: "🏆", iconBg: "#81ecec" },
+      { icon: "📺", iconBg: "#a29bfe" }
+    ];
+
+    // ============================================================
+    // ランキング処理 (最大10件保持)
+    // ============================================================
+    function getRanking() {
+      const data = localStorage.getItem(STORAGE_KEY_RANKING);
+      return data ? JSON.parse(data) : [
+        { name: "CPU", score: 25 },
+        { name: "BOT", score: 20 },
+        { name: "SYS", score: 15 },
+        { name: "NPC", score: 10 },
+        { name: "ADW", score: 5 }
+      ];
+    }
+
+    function saveRanking(name, score) {
+      let ranking = getRanking();
+      ranking.push({ name: name.toUpperCase() || "AAA", score: score });
+      // スコアの高い順に並び替えて、上位10つだけ残す
+      ranking.sort((a, b) => b.score - a.score);
+      ranking = ranking.slice(0, 10);
+      localStorage.setItem(STORAGE_KEY_RANKING, JSON.stringify(ranking));
+    }
+
+    function displayRankings() {
+      const ranking = getRanking();
+      const createListHTML = (list) => {
+        if (list.length === 0) return "";
+        return list.map((item, index) => `
+          <li class="ranking-item">
+            <span><span class="rank-num rank-${index+1}">${index + 1}</span> ${item.name}</span>
+            <span style="font-weight:bold; color:#00ffcc;">${item.score}</span>
+          </li>
+        `).join("");
+      };
+
+      const html = createListHTML(ranking);
+      startRankingList.innerHTML = html;
+      resultRankingList.innerHTML = html;
+    }
+
+    // ============================================================
+    // 多言語切り替え機能
+    // ============================================================
+    function switchLanguage(lang) {
+      currentLang = lang;
+      const t = TRANSLATIONS[lang];
+
+      document.getElementById("text-main-title").innerHTML = t.mainTitle;
+      document.getElementById("text-description").innerHTML = t.description;
+      document.getElementById("text-diff-label").textContent = t.diffLabel;
+      document.getElementById("btn-easy").textContent = t.easy;
+      document.getElementById("btn-normal").textContent = t.normal;
+      document.getElementById("btn-hard").textContent = t.hard;
+      document.getElementById("expert-btn").textContent = t.expert;
+      unlockHintEl.textContent = t.unlockHint;
+
+      document.getElementById("text-levelup").textContent = t.levelup;
+      document.getElementById("text-store-title").textContent = t.storeTitle;
+      document.getElementById("text-store-desc").innerHTML = t.storeDesc;
+      closeStoreBtn.textContent = t.cancel;
+
+      document.getElementById("text-gameover-title").textContent = t.timeup;
+      document.getElementById("text-final-score-label").textContent = t.finalScore;
+      unlockMessageEl.textContent = t.unlockMsg;
+
+      // ランキング＆登録用テキスト
+      document.getElementById("text-start-rank-title").textContent = t.rankTitle;
+      document.getElementById("text-result-rank-title").textContent = t.rankTitle;
+      document.getElementById("text-register-hint").textContent = t.registerHint;
+
+      taskbarStatus.textContent = (timerInterval !== null) ? t.sysPlaying : t.sysReady;
+
+      updateHUD();
+    }
+
+    langSelect.addEventListener("change", (e) => switchLanguage(e.target.value));
+
+    function updateClock() {
+      const now = new Date();
+      taskbarClock.textContent = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // ============================================================
+    // 効果音系 (AudioContext)
+    // ============================================================
+    let audioCtx = null;
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    }
+    function playTone(freq, duration, type, volume, delay = 0) {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.value = volume;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      const start = audioCtx.currentTime + delay;
+      osc.start(start);
+      gain.gain.setValueAtTime(volume, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+      osc.stop(start + duration);
+    }
+    function playSuccessSound() { initAudio(); playTone(880, 0.08, "sine", 0.2, 0); playTone(1320, 0.1, "sine", 0.15, 0.05); }
+    function playErrorSound() { initAudio(); playTone(150, 0.2, "square", 0.2, 0); playTone(100, 0.3, "square", 0.15, 0.1); }
+    function playLevelUpSound() { initAudio(); [392, 494, 587, 784].forEach((f, i) => playTone(f, 0.12, "sine", 0.2, i * 0.08)); }
+    function playRareSound(type) {
+      initAudio();
+      if (type === "gold") [523, 659, 784].forEach((f, i) => playTone(f, 0.1, "sine", 0.2, i * 0.06));
+      if (type === "silver") [440, 554, 659].forEach((f, i) => playTone(f, 0.12, "triangle", 0.2, i * 0.08));
+      if (type === "rainbow") [523, 659, 784, 988, 1318].forEach((f, i) => playTone(f, 0.08, "sine", 0.2, i * 0.05));
+    }
+    function playAdAppearSound(isWarning) {
+      initAudio();
+      playTone(120, 0.1, "square", isWarning ? 0.3 : 0.15, 0);
+      playTone(90, 0.15, "sawtooth", isWarning ? 0.25 : 0.12, 0.04);
+    }
+
+    // ============================================================
+    // ゲームコアロジック
+    // ============================================================
+    function loadExpertUnlock() {
+      expertUnlocked = localStorage.getItem(STORAGE_KEY_EXPERT) === "true";
+      if (expertUnlocked) {
+        expertBtn.classList.remove("expert-hidden");
+        unlockHintEl.classList.remove("show");
+      } else {
+        expertBtn.classList.add("expert-hidden");
+        unlockHintEl.classList.add("show");
+      }
+    }
+
+    difficultyButtons.addEventListener("click", (e) => {
+      const btn = e.target.closest(".diff-btn");
+      if (!btn) return;
+      document.querySelectorAll(".diff-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      selectedDifficulty = btn.dataset.diff;
+    });
+
+    function showScreen(screen) {
+      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+      screen.classList.add("active");
+    }
+
+    function startGame() {
+      initAudio();
+      playingDifficulty = selectedDifficulty;
+      const diff = DIFFICULTY_SETTINGS[playingDifficulty];
+
+      score = 0;
+      timeLeft = GAME_DURATION;
+      isPaused = false;
+      activeAds = [];
+      level = 1;
+      adsClosed = 0;
+      spawnDelay = diff.initialDelay;
+
+      document.querySelectorAll(".ad-popup, .rare-close-btn").forEach(el => el.remove());
+      fakeStoreOverlay.classList.remove("show");
+      
+      startScreen.classList.remove("active");
+      taskbarStatus.textContent = TRANSLATIONS[currentLang].sysPlaying;
+      updateHUD();
+
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(countdown, 1000);
+
+      startAdSpawner();
+      if (rareSpawnInterval) clearInterval(rareSpawnInterval);
+      rareSpawnInterval = setInterval(trySpawnRareButton, 3500);
+    }
+
+    function countdown() {
+      if (isPaused) return;
+      timeLeft -= 1;
+      updateHUD();
+      if (timeLeft <= 0) {
+        timeLeft = 0;
+        endGame();
+      }
+    }
+
+    function updateHUD() {
+      const t = TRANSLATIONS[currentLang];
+      timerEl.textContent = timeLeft;
+      scoreEl.textContent = t.scoreLabel + score;
+      levelDisplayEl.textContent = t.levelLabel + level;
+      timerEl.className = timeLeft <= 5 ? "warning" : "";
+    }
+
+    function startAdSpawner() {
+      if (adSpawnInterval) clearInterval(adSpawnInterval);
+      const tick = () => {
+        if (!isPaused && timeLeft > 0 && activeAds.length < DIFFICULTY_SETTINGS[playingDifficulty].maxAds) {
+          spawnAdWindow();
+        }
+      };
+      adSpawnInterval = setInterval(tick, spawnDelay);
+    }
+
+    function spawnAdWindow() {
+      if (isPaused || timeLeft <= 0) return;
+
+      const isWarning = Math.random() < 0.15;
+      const ad = document.createElement("div");
+      ad.className = isWarning ? "ad-popup warning-ad" : "ad-popup";
+
+      const t = TRANSLATIONS[currentLang];
+      
+      if (isWarning) {
+        ad.innerHTML = `
+          <div class="ad-header"><span>${t.warningHeader}</span><button class="ad-close">✕</button></div>
+          <div class="ad-body">
+            <div class="ad-title" style="color:#cc0000; font-weight:900;">${t.warningTitle}</div>
+            <div class="ad-text">${t.warningText}</div>
+          </div>`;
+      } else {
+        const randomAdData = t.ads[Math.floor(Math.random() * t.ads.length)];
+        const iconConfig = adIcons[Math.floor(Math.random() * adIcons.length)];
+        
+        ad.innerHTML = `
+          <div class="ad-header"><span>${t.browserHeader}</span><button class="ad-close">✕</button></div>
+          <div class="ad-body">
+            <div class="ad-icon" style="background:${iconConfig.iconBg}">${iconConfig.icon}</div>
+            <div class="ad-title">${randomAdData.title}</div>
+            <div class="ad-text">${randomAdData.text}</div>
+            <button class="ad-install-btn">${randomAdData.btn}</button>
+          </div>`;
+      }
+
+      const areaRect = desktopArea.getBoundingClientRect();
+      const w = isWarning ? 320 : 260;
+      const h = isWarning ? 180 : 200;
+      const maxX = Math.max(0, areaRect.width - w - 10);
+      const maxY = Math.max(40, areaRect.height - h - 60);
+
+      ad.style.left = Math.floor(Math.random() * maxX) + "px";
+      ad.style.top = Math.floor(40 + Math.random() * maxY) + "px";
+      ad.style.zIndex = 10 + activeAds.length;
+
+      ad.querySelector(".ad-close").addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeAdWindow(ad);
+      });
+      ad.addEventListener("click", handleAdBodyClick);
+
+      desktopArea.appendChild(ad);
+      activeAds.push(ad);
+      playAdAppearSound(isWarning);
+    }
+
+    function closeAdWindow(ad) {
+      if (isPaused) return;
+      score += 1;
+      adsClosed += 1;
+      playSuccessSound();
+
+      ad.classList.add("closing");
+      setTimeout(() => {
+        ad.remove();
+        activeAds = activeAds.filter(a => a !== ad);
+      }, 150);
+
+      if (adsClosed % 5 === 0) {
+        level += 1;
+        const diff = DIFFICULTY_SETTINGS[playingDifficulty];
+        spawnDelay = Math.max(120, diff.initialDelay - (level - 1) * diff.speedUpPerLevel);
+        startAdSpawner();
+        levelupOverlay.classList.add("show");
+        playLevelUpSound();
+        setTimeout(() => levelupOverlay.classList.remove("show"), 800);
+      }
+      updateHUD();
+    }
+
+    function handleAdBodyClick() {
+      if (isPaused) return;
+      playErrorSound();
+
+      desktopArea.classList.add("penalty-flash");
+      setTimeout(() => desktopArea.classList.remove("penalty-flash"), 200);
+
+      timeLeft = Math.max(0, timeLeft - PENALTY_SECONDS);
+      updateHUD();
+
+      if (timeLeft <= 0) {
+        endGame();
+      } else {
+        isPaused = true;
+        fakeStoreOverlay.classList.add("show");
+      }
+    }
+
+    function trySpawnRareButton() {
+      if (isPaused || timeLeft <= 0 || activeRareBtn) return;
+      const roll = Math.random();
+
+      let type = null;
+      if (playingDifficulty === "expert" && roll < RARE_CONFIG.rainbow.spawnChance) type = "rainbow";
+      else if (roll < RARE_CONFIG.gold.spawnChance) type = "gold";
+      else if (roll < RARE_CONFIG.silver.spawnChance) type = "silver";
+
+      if (!type) return;
+
+      const config = RARE_CONFIG[type];
+      const btn = document.createElement("div");
+      btn.className = "rare-close-btn " + type;
+      btn.textContent = "✕";
+
+      const areaRect = desktopArea.getBoundingClientRect();
+      btn.style.left = Math.floor(10 + Math.random() * (areaRect.width - 40)) + "px";
+      btn.style.top = Math.floor(50 + Math.random() * (areaRect.height - 110)) + "px";
+
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        playRareSound(type);
+        score += config.points;
+        btn.remove();
+        activeRareBtn = null;
+        updateHUD();
+      });
+
+      desktopArea.appendChild(btn);
+      activeRareBtn = btn;
+
+      setTimeout(() => {
+        if (activeRareBtn === btn) {
+          btn.remove();
+          activeRareBtn = null;
+        }
+      }, config.duration);
+    }
+
+    function endGame() {
+      if (timerInterval) clearInterval(timerInterval);
+      if (adSpawnInterval) clearInterval(adSpawnInterval);
+      if (rareSpawnInterval) clearInterval(rareSpawnInterval);
+      timerInterval = null;
+
+      document.querySelectorAll(".ad-popup, .rare-close-btn").forEach(el => el.remove());
+      fakeStoreOverlay.classList.remove("show");
+
+      if (playingDifficulty === "hard" && score >= 20 && !expertUnlocked) {
+        localStorage.setItem(STORAGE_KEY_EXPERT, "true");
+        expertUnlocked = true;
+        justUnlockedExpert = true;
+      }
+
+      finalScoreEl.textContent = score;
+      unlockMessageEl.className = justUnlockedExpert ? "show" : "";
+
+      const rList = TRANSLATIONS[currentLang].results;
+      let msg = rList[0];
+      if (score >= 60) msg = rList[5];
+      else if (score >= 45) msg = rList[4];
+      else if (score >= 30) msg = rList[3];
+      else if (score >= 15) msg = rList[2];
+      else if (score >= 5)  msg = rList[1];
+      resultMessageEl.textContent = msg;
+
+      taskbarStatus.textContent = TRANSLATIONS[currentLang].sysReady;
+
+      // 名前の入力欄をリセットして表示
+      registerBox.style.display = "block";
+      playerNameInput.value = "";
+      saveRankBtn.disabled = false;
+
+      displayRankings();
+      showScreen(resultScreen);
+    }
+
+    // ランキング保存ボタン
+    saveRankBtn.addEventListener("click", () => {
+      const name = playerNameInput.value.trim() || "AAA";
+      saveRanking(name, score);
+      playSuccessSound();
+      
+      // 保存したら入力フォームを隠して最新ランキングを再表示
+      registerBox.style.display = "none";
+      displayRankings();
+    });
+
+    // 初期化
+    startBtn.addEventListener("click", startGame);
+    closeStoreBtn.addEventListener("click", () => {
+      fakeStoreOverlay.classList.remove("show");
+      isPaused = false;
+    });
+    retryBtn.addEventListener("click", () => {
+      justUnlockedExpert = false;
+      loadExpertUnlock();
+      switchLanguage(currentLang);
+      displayRankings(); // スタート画面に戻る時もランキングを更新
+      showScreen(startScreen);
+    });
+
+    loadExpertUnlock();
+    switchLanguage("ja");
+    displayRankings(); // 最初の読み込み時にランキングを表示
+  </script>
+</body>
+</html>

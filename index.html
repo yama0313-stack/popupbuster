@@ -184,7 +184,7 @@
       text-align: left;
     }
     .ranking-list:empty::before {
-      content: "No Data";
+      content: "Loading...";
       opacity: 0.5;
     }
     .ranking-item {
@@ -412,7 +412,7 @@
         <div class="lang-selector">
           <select id="lang-select" class="lang-select">
             <option value="ja">日本語</option>
-            <option value="en">English</option><!selected
+            <option value="en">English</option>
             <option value="zh">简体中文</option>
           </select>
         </div>
@@ -503,7 +503,27 @@
 
   </div>
 
-  <script>
+  <!-- Firebase SDK のインポート -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // SoさんのFirebase設定情報
+    const firebaseConfig = {
+      apiKey: "AIzaSyDEO0QSUo6A09KLmeLmxhU0fj-DH1T6vq4",
+      authDomain: "popup-buster.firebaseapp.com",
+      databaseURL: "https://popup-buster-default-rtdb.firebaseio.com",
+      projectId: "popup-buster",
+      storageBucket: "popup-buster.firebasestorage.app",
+      messagingSenderId: "262946938222",
+      appId: "1:262946938222:web:729f48dab0ea60e64e757f",
+      measurementId: "G-RX27SR83DX"
+    };
+
+    // Firebaseの初期化
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
     // ============================================================
     // 多言語テキスト翻訳データ（広告データ含む）
     // ============================================================
@@ -615,7 +635,6 @@
     const GAME_DURATION = 30;
     const PENALTY_SECONDS = 3;
     const STORAGE_KEY_EXPERT = "adCloseGame_expertUnlocked";
-    const STORAGE_KEY_RANKING = "adCloseGame_rankingData_v10"; // 10件用にキーを更新
 
     const DIFFICULTY_SETTINGS = {
       easy: { initialDelay: 1400, speedUpPerLevel: 60, maxAds: 1 },
@@ -685,35 +704,43 @@
     ];
 
     // ============================================================
-    // ランキング処理 (最大10件保持)
+    // オンラインランキング処理 (Cloud Firestore連携)
     // ============================================================
-    function getRanking() {
-      const data = localStorage.getItem(STORAGE_KEY_RANKING);
-      return data ? JSON.parse(data) : [
-        { name: "CPU", score: 25 },
-        { name: "BOT", score: 20 },
-        { name: "SYS", score: 15 },
-        { name: "NPC", score: 10 },
-        { name: "ADW", score: 5 }
-      ];
+    async function getRanking() {
+      try {
+        // スコアの高い順に最大10件取得
+        const q = query(collection(db, "rankings"), orderBy("score", "desc"), limit(10));
+        const querySnapshot = await getDocs(q);
+        const ranking = [];
+        querySnapshot.forEach((doc) => {
+          ranking.push(doc.data());
+        });
+        return ranking;
+      } catch (e) {
+        console.error("ランキングの取得に失敗しました: ", e);
+        return [];
+      }
     }
 
-    function saveRanking(name, score) {
-      let ranking = getRanking();
-      ranking.push({ name: name.toUpperCase() || "AAA", score: score });
-      // スコアの高い順に並び替えて、上位10つだけ残す
-      ranking.sort((a, b) => b.score - a.score);
-      ranking = ranking.slice(0, 10);
-      localStorage.setItem(STORAGE_KEY_RANKING, JSON.stringify(ranking));
+    async function saveRanking(name, score) {
+      try {
+        await addDoc(collection(db, "rankings"), {
+          name: name.toUpperCase() || "AAA",
+          score: Number(score),
+          createdAt: serverTimestamp()
+        });
+      } catch (e) {
+        console.error("スコアの保存に失敗しました: ", e);
+      }
     }
 
-    function displayRankings() {
-      const ranking = getRanking();
+    async function displayRankings() {
+      const ranking = await getRanking();
       const createListHTML = (list) => {
-        if (list.length === 0) return "";
+        if (list.length === 0) return `<li class="ranking-item" style="opacity:0.5; justify-content:center;">No Data</li>`;
         return list.map((item, index) => `
           <li class="ranking-item">
-            <span><span class="rank-num rank-${index+1}">${index + 1}</span> ${item.name}</span>
+            <span><span class="rank-num rank-${index+1}">${index + 1}</span> ${item.name || '???'}</span>
             <span style="font-weight:bold; color:#00ffcc;">${item.score}</span>
           </li>
         `).join("");
@@ -729,7 +756,6 @@
     // ============================================================
     function switchLanguage(lang) {
       currentLang = lang;
-      langSelect.value = lang;
       const t = TRANSLATIONS[lang];
 
       document.getElementById("text-main-title").innerHTML = t.mainTitle;
@@ -794,7 +820,7 @@
     }
     function playSuccessSound() { initAudio(); playTone(880, 0.08, "sine", 0.2, 0); playTone(1320, 0.1, "sine", 0.15, 0.05); }
     function playErrorSound() { initAudio(); playTone(150, 0.2, "square", 0.2, 0); playTone(100, 0.3, "square", 0.15, 0.1); }
-    function playLevelUpSound() { initAudio(); [392, 494, 587, 784].forEach((f, i) => playTone(f, 0.12, "sine", 0.2, i * 0.08)); }
+    function playFactorSound() { initAudio(); [392, 494, 587, 784].forEach((f, i) => playTone(f, 0.12, "sine", 0.2, i * 0.08)); }
     function playRareSound(type) {
       initAudio();
       if (type === "gold") [523, 659, 784].forEach((f, i) => playTone(f, 0.1, "sine", 0.2, i * 0.06));
@@ -959,7 +985,7 @@
         spawnDelay = Math.max(120, diff.initialDelay - (level - 1) * diff.speedUpPerLevel);
         startAdSpawner();
         levelupOverlay.classList.add("show");
-        playLevelUpSound();
+        playFactorSound();
         setTimeout(() => levelupOverlay.classList.remove("show"), 800);
       }
       updateHUD();
@@ -1062,14 +1088,16 @@
     }
 
     // ランキング保存ボタン
-    saveRankBtn.addEventListener("click", () => {
+    saveRankBtn.addEventListener("click", async () => {
       const name = playerNameInput.value.trim() || "AAA";
-      saveRanking(name, score);
+      saveRankBtn.disabled = true; // 連打防止
+      
+      await saveRanking(name, score);
       playSuccessSound();
       
       // 保存したら入力フォームを隠して最新ランキングを再表示
       registerBox.style.display = "none";
-      displayRankings();
+      await displayRankings();
     });
 
     // 初期化
@@ -1078,16 +1106,16 @@
       fakeStoreOverlay.classList.remove("show");
       isPaused = false;
     });
-    retryBtn.addEventListener("click", () => {
+    retryBtn.addEventListener("click", async () => {
       justUnlockedExpert = false;
       loadExpertUnlock();
       switchLanguage(currentLang);
-      displayRankings(); // スタート画面に戻る時もランキングを更新
+      await displayRankings(); // スタート画面に戻る時もランキングを更新
       showScreen(startScreen);
     });
 
     loadExpertUnlock();
-    switchLanguage("en");
+    switchLanguage("ja");
     displayRankings(); // 最初の読み込み時にランキングを表示
   </script>
 </body>
